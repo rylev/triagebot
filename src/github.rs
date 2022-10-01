@@ -393,16 +393,23 @@ impl fmt::Display for IssueRepository {
 }
 
 impl IssueRepository {
-    fn url(&self) -> String {
+    pub(crate) fn api_url(&self) -> String {
         format!(
             "https://api.github.com/repos/{}/{}",
             self.organization, self.repository
         )
     }
 
+    pub(crate) fn url(&self) -> String {
+        format!(
+            "https://github.com/repos/{}/{}",
+            self.organization, self.repository
+        )
+    }
+
     async fn has_label(&self, client: &GithubClient, label: &str) -> anyhow::Result<bool> {
         #[allow(clippy::redundant_pattern_matching)]
-        let url = format!("{}/labels/{}", self.url(), label);
+        let url = format!("{}/labels/{}", self.api_url(), label);
         match client._send_req(client.get(&url)).await {
             Ok((_, _)) => Ok(true),
             Err(e) => {
@@ -468,13 +475,13 @@ impl Issue {
     }
 
     pub async fn get_comment(&self, client: &GithubClient, id: usize) -> anyhow::Result<Comment> {
-        let comment_url = format!("{}/issues/comments/{}", self.repository().url(), id);
+        let comment_url = format!("{}/issues/comments/{}", self.repository().api_url(), id);
         let comment = client.json(client.get(&comment_url)).await?;
         Ok(comment)
     }
 
     pub async fn edit_body(&self, client: &GithubClient, body: &str) -> anyhow::Result<()> {
-        let edit_url = format!("{}/issues/{}", self.repository().url(), self.number);
+        let edit_url = format!("{}/issues/{}", self.repository().api_url(), self.number);
         #[derive(serde::Serialize)]
         struct ChangedIssue<'a> {
             body: &'a str,
@@ -492,7 +499,7 @@ impl Issue {
         id: usize,
         new_body: &str,
     ) -> anyhow::Result<()> {
-        let comment_url = format!("{}/issues/comments/{}", self.repository().url(), id);
+        let comment_url = format!("{}/issues/comments/{}", self.repository().api_url(), id);
         #[derive(serde::Serialize)]
         struct NewComment<'a> {
             body: &'a str,
@@ -525,7 +532,7 @@ impl Issue {
         // DELETE /repos/:owner/:repo/issues/:number/labels/{name}
         let url = format!(
             "{repo_url}/issues/{number}/labels/{name}",
-            repo_url = self.repository().url(),
+            repo_url = self.repository().api_url(),
             number = self.number,
             name = label,
         );
@@ -557,7 +564,7 @@ impl Issue {
         // repo_url = https://api.github.com/repos/Codertocat/Hello-World
         let url = format!(
             "{repo_url}/issues/{number}/labels",
-            repo_url = self.repository().url(),
+            repo_url = self.repository().api_url(),
             number = self.number
         );
 
@@ -622,7 +629,7 @@ impl Issue {
         log::info!("remove {:?} assignees for {}", selection, self.global_id());
         let url = format!(
             "{repo_url}/issues/{number}/assignees",
-            repo_url = self.repository().url(),
+            repo_url = self.repository().api_url(),
             number = self.number
         );
 
@@ -662,7 +669,7 @@ impl Issue {
         log::info!("add_assignee {} for {}", user, self.global_id());
         let url = format!(
             "{repo_url}/issues/{number}/assignees",
-            repo_url = self.repository().url(),
+            repo_url = self.repository().api_url(),
             number = self.number
         );
 
@@ -705,7 +712,7 @@ impl Issue {
             title
         );
 
-        let create_url = format!("{}/milestones", self.repository().url());
+        let create_url = format!("{}/milestones", self.repository().api_url());
         let resp = client
             .send_req(
                 client
@@ -717,7 +724,7 @@ impl Issue {
         // fine, it just means the milestone was already created.
         log::trace!("Created milestone: {:?}", resp);
 
-        let list_url = format!("{}/milestones", self.repository().url());
+        let list_url = format!("{}/milestones", self.repository().api_url());
         let milestone_list: Vec<Milestone> = client.json(client.get(&list_url)).await?;
         let milestone_no = if let Some(milestone) = milestone_list.iter().find(|v| v.title == title)
         {
@@ -734,7 +741,7 @@ impl Issue {
         struct SetMilestone {
             milestone: u64,
         }
-        let url = format!("{}/issues/{}", self.repository().url(), self.number);
+        let url = format!("{}/issues/{}", self.repository().api_url(), self.number);
         client
             ._send_req(client.patch(&url).json(&SetMilestone {
                 milestone: milestone_no,
@@ -745,7 +752,7 @@ impl Issue {
     }
 
     pub async fn close(&self, client: &GithubClient) -> anyhow::Result<()> {
-        let edit_url = format!("{}/issues/{}", self.repository().url(), self.number);
+        let edit_url = format!("{}/issues/{}", self.repository().api_url(), self.number);
         #[derive(serde::Serialize)]
         struct CloseIssue<'a> {
             state: &'a str,
@@ -771,7 +778,7 @@ impl Issue {
 
         let mut req = client.get(&format!(
             "{}/compare/{}...{}",
-            self.repository().url(),
+            self.repository().api_url(),
             before,
             after
         ));
@@ -787,7 +794,7 @@ impl Issue {
 
         let req = client.get(&format!(
             "{}/pulls/{}/files",
-            self.repository().url(),
+            self.repository().api_url(),
             self.number
         ));
         Ok(client.json(req).await?)
@@ -1504,6 +1511,12 @@ impl GithubClient {
                 Vec::new()
             }
         }
+    }
+
+    pub async fn pr_diff(&self, repo_url: &str, pr: &str) -> anyhow::Result<String> {
+        let req = self.get(&format!("{}/pull/{}.diff", repo_url, pr));
+        let diff = self.send_req(req).await?;
+        Ok(String::from(String::from_utf8_lossy(&diff)))
     }
 }
 

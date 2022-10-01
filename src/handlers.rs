@@ -40,6 +40,7 @@ mod prioritize;
 mod relabel;
 mod review_submitted;
 mod rfc_helper;
+mod rollup_warnings;
 mod rustc_commits;
 mod shortcut;
 
